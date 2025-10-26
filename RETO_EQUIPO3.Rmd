@@ -1,0 +1,431 @@
+---
+title: "Reto"
+output: word_document
+date: "2025-10-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reto
+## Lectura y selección de variables (2024)
+```{r}
+# Cargar 2024 y quedarnos con variables del reto
+
+M24 = read.csv("molec_2024.csv", stringsAsFactors = FALSE)
+
+M24 = M24[, c("p2","p3_1","p8_1","p8_2","p4","p26")]
+
+# Dimensión (registros x columnas)
+
+dim(M24)
+```
+
+## Calidad de datos: faltantes, erróneos, duplicados, escritura
+```{r}
+# Reglas básicas del cuestionario (binarias): 1=Sí, 2=No; 0 o "b" => NA
+
+M24$p2   <- ifelse(M24$p2   %in% c(0,"b"), NA, M24$p2)
+M24$p3_1 <- ifelse(M24$p3_1 %in% c(0,"b"), NA, M24$p3_1)
+M24$p8_1 <- ifelse(M24$p8_1 %in% c(0,"b"), NA, M24$p8_1)
+M24$p8_2 <- ifelse(M24$p8_2 %in% c(0,"b"), NA, M24$p8_2)
+
+# Numéricas: primero “b”/vacíos a NA, luego convertir y aplicar rangos del diccionario
+M24$p4  <- ifelse(M24$p4  %in% c("b", "", " "), NA, M24$p4)
+M24$p26 <- ifelse(M24$p26 %in% c("b", "", " "), NA, M24$p26)
+
+# Numéricas: rangos válidos
+
+M24$p4  <- suppressWarnings(as.numeric(M24$p4))
+M24$p26 <- suppressWarnings(as.numeric(M24$p26))
+
+# Rangos EXACTOS (p4: 1–70; p26: 2–360)
+M24$p4  <- ifelse(M24$p4  >= 1 & M24$p4  <= 70,  M24$p4,  NA)
+M24$p26 <- ifelse(M24$p26 >= 2 & M24$p26 <= 360, M24$p26, NA)
+
+# Duplicados exactos (en todas las columnas seleccionadas)
+
+M24 <- M24[!duplicated(M24), ]
+
+# % de NA por columna
+
+pct_na <- round(colMeans(is.na(M24)) * 100, 2)
+pct_na
+```
+
+## Diccionario breve con %NA
+```{r}
+var <- c("p2","p3_1","p8_1","p8_2","p4","p26")
+descripcion <- c(
+"¿Usted acostumbra leer?",
+"¿En los últimos 12 meses leyó LIBROS?",
+"Formato digital (si leyó):",
+"Formato impreso (si leyó):",
+"Número de libros leídos en 12 meses",
+"Minutos continuos de lectura"
+)
+tipo <- c("Categórica (1=Sí,2=No)", "Categórica (1=Sí,2=No)",
+"Categórica (1=Sí,2=No)", "Categórica (1=Sí,2=No)",
+"Numérica (conteo)", "Numérica (tiempo)")
+
+valores_posibles <- c(
+"1=Sí, 2=No (0/'b'=NA)",
+"1=Sí, 2=No (0/'b'=NA)",
+"1=Sí, 2=No (0/'b'=NA)",
+"1=Sí, 2=No (0/'b'=NA)",
+"1–70",
+"2–360"
+)
+
+dicc <- data.frame(
+Variable = var,
+Descripcion = descripcion,
+Tipo = tipo,
+Valores_posibles = valores_posibles,
+Porc_NA = pct_na[var],
+check.names = FALSE
+)
+dicc
+```
+
+## Guardar bases limpia y completa
+```{r}
+# Guardar base limpia (con NA's)
+
+write.csv(M24, "molec_2024_limpio.csv", row.names = FALSE)
+
+# Base solo con casos completos para análisis descriptivo
+
+M24_cc <- na.omit(M24)
+write.csv(M24_cc, "molec_2024_sin_na.csv", row.names = FALSE)
+
+# Dimensión de la base sin NA's
+
+dim(M24_cc)
+```
+
+## Preparación de etiquetas y variable de formato
+```{r}
+# Etiquetas Sí/No
+
+p2_f  <- factor(M24_cc$p2,   levels = c(1,2), labels = c("Sí","No"))
+p3_f  <- factor(M24_cc$p3_1, levels = c(1,2), labels = c("Sí","No"))
+p81_f <- factor(M24_cc$p8_1, levels = c(1,2), labels = c("Sí","No"))
+p82_f <- factor(M24_cc$p8_2, levels = c(1,2), labels = c("Sí","No"))
+
+# Formato de lectura (a partir de p8_1 y p8_2)
+
+formato <- ifelse(M24_cc$p8_1==1 & M24_cc$p8_2==0, "solo_digital",
+ifelse(M24_cc$p8_1==0 & M24_cc$p8_2==1, "solo_impreso",
+ifelse(M24_cc$p8_1==1 & M24_cc$p8_2==1, "mixto",
+ifelse(M24_cc$p8_1==0 & M24_cc$p8_2==0, "ninguno", NA))))
+formato <- factor(formato, levels = c("solo_impreso","solo_digital","mixto","ninguno"))
+```
+
+## (A) Variables cuantitativas: p4 y p26
+## Medidas (media, mediana, rango medio, sd, CV, cuartiles, sesgo, curtosis)
+```{r}
+library(e1071)
+
+x <- M24_cc$p4
+y <- M24_cc$p26
+
+# Resumen p4
+
+res_p4 <- c(
+Minimo  = min(x, na.rm=TRUE),
+Q1      = quantile(x, .25, na.rm=TRUE),
+Mediana = median(x, na.rm=TRUE),
+Media   = mean(x, na.rm=TRUE),
+Q3      = quantile(x, .75, na.rm=TRUE),
+Maximo  = max(x, na.rm=TRUE),
+Rango_Medio = (max(x,na.rm=TRUE)-min(x,na.rm=TRUE))/2,
+Desv_Est    = sd(x, na.rm=TRUE),
+CV          = mean(x,na.rm=TRUE)/sd(x,na.rm=TRUE),
+Sesgo       = skewness(x, na.rm=TRUE),
+Curtosis    = kurtosis(x, na.rm=TRUE)
+)
+
+# Resumen p26
+
+res_p26 <- c(
+Minimo  = min(y, na.rm=TRUE),
+Q1      = quantile(y, .25, na.rm=TRUE),
+Mediana = median(y, na.rm=TRUE),
+Media   = mean(y, na.rm=TRUE),
+Q3      = quantile(y, .75, na.rm=TRUE),
+Maximo  = max(y, na.rm=TRUE),
+Rango_Medio = (max(y,na.rm=TRUE)-min(y,na.rm=TRUE))/2,
+Desv_Est    = sd(y, na.rm=TRUE),
+CV          = mean(y,na.rm=TRUE)/sd(y,na.rm=TRUE),
+Sesgo       = skewness(y, na.rm=TRUE),
+Curtosis    = kurtosis(y, na.rm=TRUE)
+)
+
+round(rbind(p4=res_p4, p26=res_p26), 2)
+```
+
+## Outliers (regla IQR) y rangos
+```{r}
+# p4
+
+Q1x <- quantile(x,.25,na.rm=TRUE); Q3x <- quantile(x,.75,na.rm=TRUE); IQRx <- Q3x-Q1x
+lim_inf_x <- Q1x - 1.5*IQRx; lim_sup_x <- Q3x + 1.5*IQRx
+sum(x < lim_inf_x | x > lim_sup_x, na.rm=TRUE)
+
+# p26
+
+Q1y <- quantile(y,.25,na.rm=TRUE); Q3y <- quantile(y,.75,na.rm=TRUE); IQRy <- Q3y-Q1y
+lim_inf_y <- Q1y - 1.5*IQRy; lim_sup_y <- Q3y + 1.5*IQRy
+sum(y < lim_inf_y | y > lim_sup_y, na.rm=TRUE)
+```
+
+## Figuras (1)–(3): histogramas y boxplots
+```{r}
+par(mfrow=c(1,2))
+hist(x, main="Figura 1. Histograma de p4 (libros, 2024)", xlab="Número de libros")
+hist(y, main="Figura 2. Histograma de p26 (minutos, 2024)", xlab="Minutos continuos")
+
+par(mfrow=c(1,1))
+boxplot(x, horizontal=TRUE, main="Figura 3. Boxplot de p4 (2024)", xlab="Libros")
+```
+
+## Correlación p4 vs p26 y dispersión
+```{r}
+cor_xy <- cor(x, y, use="complete.obs")
+cor_xy
+
+plot(x, y,
+main="Figura 4. Dispersión p4 vs p26 (2024)",
+xlab="Libros en 12 meses (p4)", ylab="Minutos continuos (p26)")
+abline(lm(y ~ x), col="blue")
+```
+
+
+## (B) Variables cualitativas: p2, p3_1, p8_1, p8_2
+## Tablas de frecuencia, porcentajes y mediana ordinal (1=Sí→1, 2=No→0)
+```{r}
+# Frecuencias y % para cada variable (en M24_cc ya sin NA globales)
+
+tb_p2  <- table(p2_f);  cbind(Frecuencia=tb_p2, Porcentaje=round(100*tb_p2/sum(tb_p2),2))
+tb_p3  <- table(p3_f);  cbind(Frecuencia=tb_p3, Porcentaje=round(100*tb_p3/sum(tb_p3),2))
+tb_p81 <- table(p81_f); cbind(Frecuencia=tb_p81, Porcentaje=round(100*tb_p81/sum(tb_p81),2))
+tb_p82 <- table(p82_f); cbind(Frecuencia=tb_p82, Porcentaje=round(100*tb_p82/sum(tb_p82),2))
+
+# Mediana ordinal
+
+p2_num  <- ifelse(M24_cc$p2==1,1,0)
+p3_num  <- ifelse(M24_cc$p3_1==1,1,0)
+p81_num <- ifelse(M24_cc$p8_1==1,1,0)
+p82_num <- ifelse(M24_cc$p8_2==1,1,0)
+
+data.frame(
+Variable=c("p2","p3_1","p8_1","p8_2"),
+Mediana=c(median(p2_num), median(p3_num), median(p81_num), median(p82_num))
+)
+```
+
+## Figuras (5)–(8): barras y pastel
+```{r}
+par(mfrow=c(2,2))
+barplot(tb_p2,  main="Figura 5. Barras p2",  ylab="Frecuencia")
+pie(tb_p2,      main="Figura 6. Pastel p2")
+barplot(tb_p3,  main="Figura 7. Barras p3_1", ylab="Frecuencia")
+pie(tb_p3,      main="Figura 8. Pastel p3_1")
+par(mfrow=c(1,1))
+```
+
+## (C) Vinculación: cuantitativas por categoría de interés
+## Medidas por formato
+```{r}
+# Medidas de p26 (continuidad) por formato
+
+t_media_p26 <- tapply(M24_cc$p26, formato, mean,   na.rm=TRUE)
+t_sd_p26    <- tapply(M24_cc$p26, formato, sd,     na.rm=TRUE)
+t_med_p26   <- tapply(M24_cc$p26, formato, median, na.rm=TRUE)
+round(rbind(Media=t_media_p26, Mediana=t_med_p26, SD=t_sd_p26), 2)
+
+# Medidas de p4 (libros) por formato
+
+t_media_p4 <- tapply(M24_cc$p4, formato, mean,   na.rm=TRUE)
+t_sd_p4    <- tapply(M24_cc$p4, formato, sd,     na.rm=TRUE)
+t_med_p4   <- tapply(M24_cc$p4, formato, median, na.rm=TRUE)
+round(rbind(Media=t_media_p4, Mediana=t_med_p4, SD=t_sd_p4), 2)
+```
+
+## Figuras (9)–(10): boxplots comparativos por formato (reemplaza barras de p4)
+```{r}
+par(mfrow=c(1,2))
+boxplot(M24_cc$p26 ~ formato, main="Figura 9. p26 por formato (2024)",
+xlab="Formato", ylab="Minutos continuos", las=1)
+boxplot(M24_cc$p4  ~ formato, main="Figura 10. p4 por formato (2024)",
+xlab="Formato", ylab="Libros en 12 meses", las=1)
+par(mfrow=c(1,1))
+```
+
+## Etapa 3 Inferencial (α = 0.04; IC = 96%)
+```{r}
+alpha <- 0.04
+nc    <- 1 - alpha  # 0.96
+
+# Variables numéricas sobre M24
+p2_num  <- suppressWarnings(as.numeric(M24$p2))
+p3_num  <- suppressWarnings(as.numeric(M24$p3_1))
+p81_num <- suppressWarnings(as.numeric(M24$p8_1))
+p82_num <- suppressWarnings(as.numeric(M24$p8_2))
+
+# Formato en M24 (1=Sí, 2=No)
+formato_inf <- ifelse(p81_num==1 & p82_num==2, "solo_digital",
+               ifelse(p81_num==2 & p82_num==1, "solo_impreso",
+               ifelse(p81_num==1 & p82_num==1, "mixto",
+               ifelse(p81_num==2 & p82_num==2, "ninguno", NA))))
+formato_inf <- factor(formato_inf, levels=c("solo_impreso","solo_digital","mixto","ninguno"))
+```
+
+## 1) Intervalos de confianza (≥4, IC 96%)
+## IC (1): Proporción de lectores recientes (p3_a == "Sí") en toda la muestra
+```{r}
+x1 <- sum(p3_f=="Sí", na.rm=TRUE)
+n1 <- sum(!is.na(p3_f))
+ic_p3_total <- if(n1>0) prop.test(x1, n1, conf.level=nc, correct=FALSE) else NA
+ic_p3_total
+```
+## IC (2) y (3): Proporción de hábito lector (p2=="Sí") por formato: solo_impreso y solo_digital
+```{r}
+# solo_impreso
+idx_imp <- formato_inf=="solo_impreso"
+n_imp   <- sum(!is.na(p2_num[idx_imp]))
+x_imp   <- sum(p2_num[idx_imp]==1, na.rm=TRUE)
+
+# solo_digital
+idx_dig <- formato_inf=="solo_digital"
+n_dig   <- sum(!is.na(p2_num[idx_dig]))
+x_dig   <- sum(p2_num[idx_dig]==1, na.rm=TRUE)
+
+cat("\nTamaños:\n  impreso: n=", n_imp, " x=", x_imp,
+    "\n  digital: n=", n_dig, " x=", x_dig, "\n", sep="")
+
+# Imprimir resultados
+if(n_imp > 0){
+  cat("\nIC 96% hábito (impreso):\n")
+  print(prop.test(x_imp, n_imp, conf.level=nc, correct=FALSE))
+} else cat("\nImpreso: sin datos válidos para p2.\n")
+
+if(n_dig > 0){
+  cat("\nIC 96% hábito (digital):\n")
+  print(prop.test(x_dig, n_dig, conf.level=nc, correct=FALSE))
+} else cat("\nDigital: sin datos válidos para p2.\n")
+
+# IC(4) Comparación directa (digital - impreso)
+if(n_imp>0 && n_dig>0){
+  cat("\nDiferencia de proporciones (digital - impreso):\n")
+  print(prop.test(c(x_dig, x_imp), c(n_dig, n_imp), conf.level=nc, correct=FALSE))
+}
+```
+## IC (5): Media de p26 en formato "mixto" (t-Student)
+```{r}
+alpha <- 0.04
+idx_mix <- (formato_inf == "mixto")
+xm <- suppressWarnings(as.numeric(M24$p26[idx_mix]))  # usa p26 numérico
+xm <- xm[is.finite(xm)]                               # quita NA/Inf
+
+if(length(xm) >= 2){
+  m <- mean(xm); s <- sd(xm); n <- length(xm)
+  tval <- qt(1 - alpha/2, df = n-1)
+  se <- s/sqrt(n)
+  ic_media_p26_mix <- c(media=m, li=m - tval*se, ls=m + tval*se, n=n)
+  ic_media_p26_mix
+} else {
+  cat("No hay ≥2 observaciones válidas de p26 en 'mixto'.\n")
+}
+```
+
+## 2) Pruebas de hipótesis (≥3, α = 0.04)
+## PH (1) Proporción 1-muestra: hábito en solo_impreso  vs  p0 = 0.5
+## Distribución muestral ~ Normal (z) por aproximación
+```{r}
+idx_imp <- (formato_inf == "solo_impreso")
+n1 <- sum(!is.na(p2_num[idx_imp]))
+x1 <- sum(p2_num[idx_imp] == 1, na.rm = TRUE)
+p0 <- 0.5
+ph1 <- prop.test(x1, n1, p = p0, conf.level = nc, correct = FALSE)
+ph1
+
+# z crítico y z empírico
+phat <- x1/n1
+se0  <- sqrt(p0*(1-p0)/n1)
+ze   <- (phat - p0)/se0
+zf   <- qnorm(1 - alpha/2)
+
+# Gráfica (Normal estándar)
+x <- seq(-4, 4, 0.01); y <- dnorm(x)
+plot(x, y, type="l", lwd=3, xlab="z", yaxt="n", ylab="",
+     main="PH(1) 1-muestra proporción (z)", ylim=c(-0.02, max(y)*1.05))
+abline(h=0)
+legend("topleft", c("Regla de decisión","Estadístico"),
+       fill=c("red","blue"), cex=.9, bty="n")
+abline(v= c(-zf, zf), col="red", lty=3, lwd=1.5); text(c(-zf,zf), -0.02, round(c(-zf,zf),2), col="red")
+abline(v= ze, col="blue", lty=3, lwd=1.5); text(ze, -0.01, round(ze,2), col="blue")
+```
+## PH (2) Diferencia de proporciones: digital – impreso (p2==1)
+## Distribución muestral ~ Normal (z)
+```{r}
+idx_dig <- (formato_inf == "solo_digital")
+n2 <- sum(!is.na(p2_num[idx_dig]))
+x2 <- sum(p2_num[idx_dig] == 1, na.rm = TRUE)
+
+ph2 <- prop.test(c(x2, x1), c(n2, n1), conf.level = nc, correct = FALSE)
+ph2  # IC 96% y p-valor
+
+# z empírico (con p_pooled) para la gráfica
+p1 <- x2/n2; p2_ <- x1/n1
+p_pool <- (x1 + x2)/(n1 + n2)
+se_pool <- sqrt(p_pool*(1-p_pool)*(1/n1 + 1/n2))
+ze2 <- (p1 - p2_)/se_pool
+zf2 <- qnorm(1 - alpha/2)
+
+plot(x, y, type="l", lwd=3, xlab="z", yaxt="n", ylab="",
+     main="PH(2) Dif. de proporciones (z)", ylim=c(-0.02, max(y)*1.05))
+abline(h=0)
+legend("topleft", c("Regla de decisión","Estadístico"),
+       fill=c("red","blue"), cex=.9, bty="n")
+abline(v= c(-zf2, zf2), col="red", lty=3, lwd=1.5); text(c(-zf2,zf2), -0.02, round(c(-zf2,zf2),2), col="red")
+abline(v= ze2, col="blue", lty=3, lwd=1.5); text(ze2, -0.01, round(ze2,2), col="blue")
+
+```
+## PH (3): Diferencia de medias de p26: mixto – solo_impreso (Welch)
+## Distribución muestral ~ t de Student (Welch)
+```{r}
+xm <- p26_num[formato_inf=="mixto"];        xm <- xm[is.finite(xm)]
+yi <- p26_num[formato_inf=="solo_impreso"]; yi <- yi[is.finite(yi)]
+
+if(length(xm) >= 2 && length(yi) >= 2){
+  ph3 <- t.test(xm, yi, var.equal = FALSE, conf.level = nc)  # Welch
+  print(ph3)
+
+  # t crítico y t empírico + gráfica (auto-ajusta ejes)
+  mx <- mean(xm); my <- mean(yi); vx <- var(xm); vy <- var(yi); nx <- length(xm); ny <- length(yi)
+  se_w <- sqrt(vx/nx + vy/ny)
+  te   <- (mx - my)/se_w
+  df_w <- (vx/nx + vy/ny)^2 / ((vx^2)/(nx^2*(nx-1)) + (vy^2)/(ny^2*(ny-1)))
+  tf   <- qt(1 - alpha/2, df = df_w)
+
+  lim <- max(4, abs(c(tf, te))) + 0.5
+  x <- seq(-lim, lim, length.out = 1000); y <- dt(x, df = df_w)
+  plot(x, y, type="l", lwd=3, xlab="t", yaxt="n", ylab="",
+       main=sprintf("PH(3) Dif. de medias p26 (t, df≈%.1f)", df_w), ylim=c(-0.02, max(y)*1.05))
+  abline(h=0); legend("topleft", c("Regla de decisión","Estadístico"), fill=c("red","blue"), bty="n", cex=.9)
+  abline(v=c(-tf, tf), col="red", lty=3, lwd=1.5)
+  text(c(-tf, tf), -0.01, round(c(-tf, tf),2), col="red", cex=.85)
+  if (abs(te) <= lim){
+    abline(v=te, col="blue", lty=3, lwd=1.5); text(te, -0.005, round(te,2), col="blue", cex=.9)
+  } else {
+    abline(v=sign(te)*lim, col="blue", lty=3, lwd=1.5)
+    text(sign(te)*(lim-0.4), max(y)*0.1, paste0("t=", round(te,2)," (fuera)"), col="blue", cex=.85,
+         pos=ifelse(te>0,2,4))
+  }
+} else {
+  cat("PH(3): grupos con p26 insuficientes para t de Welch.\n")
+}
+```
